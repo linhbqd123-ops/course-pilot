@@ -1,0 +1,66 @@
+# Browser Configuration
+browser:
+  headless: false                    # Set to true for headless mode
+  timeout: 30000                     # 30s for general operations
+  navigationTimeout: 60000           # 60s for page navigation
+  slowMo: 0                          # Slow down by Xms (useful for debugging)
+  viewport:
+    width: 1280
+    height: 720
+
+# Agent Configuration
+agent:
+  maxRetries: 3                      # Retry failed sections
+  retryDelayMs: 1000                 # Delay between retries
+  pageWaitTime: 3000                 # Wait for page stabilization
+  videoWatchTimeout: 600000          # 10 minutes for video completion
+
+# Logging Configuration
+logging:
+  level: "info"                      # "debug" | "info" | "warn" | "error"
+  pretty: true                       # Pretty print in terminal
+
+# Database Configuration
+database:
+  path: "./data/agent.db"
+
+# Profile Configuration
+profile:
+  dir: "./data/profiles"
+  autoSync: false
+  syncInterval: 3600000              # 1 hour
+
+# Default Provider
+defaultProvider: "groq"
+
+# LLM Providers
+providers:
+  groq:
+    name: "groq"
+    model: "llama-3.3-70b-versatile"
+    temperature: 0.3
+    maxTokens: 4096
+    rateLimitRPM: 60
+
+  openai:
+    name: "openai"
+    model: "gpt-4-turbo-preview"
+    temperature: 0.3
+    maxTokens: 4096
+    rateLimitRPM: 60
+
+  ollama:
+    name: "ollama"
+    baseUrl: "http://localhost:11434/v1"
+    model: "mistral"
+    temperature: 0.3
+    maxTokens: 4096
+
+# Task to Provider Mapping
+taskMapping:
+  orchestrator: "groq"
+  navigator: "groq"
+  video_handler: "groq"
+  quiz_handler: "groq"
+  reader_handler: "groq"
+  page_classifier: "groq"

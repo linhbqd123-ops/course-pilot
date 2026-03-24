@@ -1,0 +1,53 @@
+# Node
+node_modules/
+
+# Build output
+dist/
+dist/bundle/
+build/
+out/
+
+# Local data and databases
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Playwright / browser artifacts
+.playwright/
+playwright-report/
+test-results/
+
+# Caches
+.cache/
+.parcel-cache/
+.turbo/
+
+# Bundles / distribution
+browser-agent-tool.zip
+
+# Misc
+.env.local
+
