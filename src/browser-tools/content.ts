@@ -48,7 +48,7 @@ export async function extractDOMForLLM(
 
             // Get attributes
             const attrs: Record<string, string> = {};
-            for (const attr of el.attributes) {
+            for (const attr of Array.from(el.attributes)) {
               if (includeAttrs.includes(attr.name)) {
                 attrs[attr.name] = attr.value;
               }

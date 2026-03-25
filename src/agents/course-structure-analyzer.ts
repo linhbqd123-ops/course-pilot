@@ -55,7 +55,6 @@ export class CourseStructureAnalyzer {
      * Analyze the course structure once at initialization
      */
     async analyzeCoursePage(page: Page, courseTitle: string): Promise<CourseStructurePattern> {
-        const startTime = Date.now();
         logger.info('[COURSE_ANALYZER] Starting course structure analysis...');
 
         try {
@@ -79,6 +78,7 @@ export class CourseStructureAnalyzer {
             logger.info(`[COURSE_ANALYZER] Found ${sectionNames.length} sections: ${sectionNames.slice(0, 5).join(', ')}...`);
 
             // Ask AI to interpret this course's patterns
+            logger.info('[COURSE_ANALYZER] Asking AI to interpret course structure...');
             const pattern = await this.askAIForPattern(
                 url,
                 courseTitle,

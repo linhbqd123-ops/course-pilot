@@ -7,6 +7,7 @@ const logger = getLogger();
 export class UnifiedLLMProvider implements LLMProvider {
   private client: OpenAI;
   config: LLMProviderConfig;
+  private baseURL: string;
   private requestCount = 0;
   private lastResetTime = Date.now();
   private rateLimitRPM: number;
@@ -26,6 +27,8 @@ export class UnifiedLLMProvider implements LLMProvider {
       baseURL = 'https://api.openai.com/v1';
     }
 
+    this.baseURL = baseURL || 'https://api.openai.com/v1';
+
     this.client = new OpenAI({
       apiKey: config.apiKey || '',
       baseURL,
@@ -44,6 +47,17 @@ export class UnifiedLLMProvider implements LLMProvider {
       const model = options?.model || this.config.model;
       const temperature = options?.temperature ?? this.config.temperature ?? 0.3;
       const maxTokens = options?.maxTokens || this.config.maxTokens || 4096;
+
+      // Log request details (mask API key for safety)
+      try {
+        const apiKeyPresent = !!this.config.apiKey;
+        const maskedKey = this.config.apiKey && this.config.apiKey.length > 8
+          ? `${this.config.apiKey.slice(0, 4)}...${this.config.apiKey.slice(-4)}`
+          : (this.config.apiKey || 'none');
+                logger.debug(`LLM request -> provider=${this.config.name} model=${model} baseURL=${this.baseURL} apiKeyPresent=${apiKeyPresent} apiKeyMask=${maskedKey}`);
+      } catch (logErr) {
+        logger.debug({ logErr }, 'Failed to log LLM request details');
+      }
 
       const response = await this.client.chat.completions.create({
         model,

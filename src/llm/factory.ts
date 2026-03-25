@@ -15,10 +15,16 @@ export class LLMFactory {
   }
 
   private initializeProviders(): void {
-    // Initialize all configured providers from `llm` section
-    const llmConfig = this.config.llm || { providers: {} };
-    const providers = llmConfig.providers as Record<string, import('./types.js').LLMProviderConfig>;
-    for (const [name, providerConfig] of Object.entries(providers || {})) {
+    // Initialize providers from the canonical `llm.providers` location,
+    // but fall back to legacy `providers` for backward compatibility.
+    const llmConfig = this.config.llm || {};
+    const providersFromLlm = (llmConfig.providers || {}) as Record<string, import('./types.js').LLMProviderConfig>;
+    const legacyProviders = (this.config as any).providers || {} as Record<string, import('./types.js').LLMProviderConfig>;
+
+    // Merge legacy providers into llm providers, without overwriting explicit llm config
+    const mergedProviders: Record<string, import('./types.js').LLMProviderConfig> = { ...legacyProviders, ...providersFromLlm };
+
+    for (const [name, providerConfig] of Object.entries(mergedProviders || {})) {
       try {
         const provider = new UnifiedLLMProvider(providerConfig);
         this.providers.set(name, provider);

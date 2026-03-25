@@ -21,6 +21,7 @@ program
   .command('complete <courseName> <courseUrl>')
   .description('Complete an online course')
   .option('--headless', 'Run browser in headless mode', false)
+  .option('--provider <name>', 'LLM provider to use (overrides config)')
   .option('--debug', 'Enable debug logging', false)
   .action(async (courseName, courseUrl, options) => {
     try {
@@ -62,9 +63,20 @@ program
       const browser = new BrowserController(profilePath, config.browser);
       await browser.initialize();
 
-      // Get LLM provider
-      const llmProvider = llmFactory.getProviderForTask('orchestrator');
-      logInfo(`Using LLM provider: ${llmProvider.name} (${llmProvider.config.model})`);
+      // Select LLM provider: CLI option > taskMapping/config default
+      let llmProvider;
+      try {
+        if (options.provider) {
+          llmProvider = llmFactory.getProvider(options.provider);
+          logInfo(`Using LLM provider (CLI override): ${llmProvider.name} (${llmProvider.config.model})`);
+        } else {
+          llmProvider = llmFactory.getProviderForTask('orchestrator');
+          logInfo(`Using LLM provider (config): ${llmProvider.name} (${llmProvider.config.model})`);
+        }
+      } catch (err) {
+        logError(`LLM provider selection failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exit(1);
+      }
 
       // Create and run orchestrator agent
       const orchestrator = new OrchestratorAgent(llmProvider, browser, db);
@@ -77,6 +89,7 @@ program
         context: {
           courseName,
           courseUrl,
+          llmProvider, // Pass LLM provider to all agents
         },
       });
 

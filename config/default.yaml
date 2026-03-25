@@ -2,7 +2,7 @@
 browser:
   headless: false                    # Set to true for headless mode
   timeout: 30000                     # 30s for general operations
-  navigationTimeout: 60000           # 60s for page navigation
+  navigationTimeout: 15000           # 15s for page navigation
   slowMo: 0                          # Slow down by Xms (useful for debugging)
   viewport:
     width: 1280

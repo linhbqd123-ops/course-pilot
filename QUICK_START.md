@@ -40,6 +40,15 @@ node main.js
 npm start -- complete "Course Name" "https://example.com/course"
 ```
 
+You can optionally select which LLM provider to use at runtime with `--provider` (overrides `config/default.yaml` mappings):
+
+```bash
+# Use the `openai` provider configured in `config/default.yaml`
+npm start -- complete "Course Name" "https://example.com/course" -- --provider openai
+```
+
+If you don't pass `--provider`, the agent uses the task-to-provider mapping in `config/default.yaml` (the `llm.taskMapping` entry) or the `llm.defaultProvider` fallback.
+
 ## Troubleshooting (quick)
 
 - If API key missing: ensure `.env` contains `GROQ_API_KEY` or `OPENAI_API_KEY`.

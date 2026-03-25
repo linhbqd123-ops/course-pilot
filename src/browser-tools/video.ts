@@ -88,7 +88,7 @@ export async function detectVideo(
 
     return {
       success: true,
-      data: videoInfo,
+      data: videoInfo as any,
       duration: Date.now() - startTime,
     };
   } catch (error) {
@@ -300,16 +300,16 @@ export async function waitForVideoEnd(
       maxWaitTime
     );
 
-    if (result.completed) {
-      logger.info(`[VIDEO] Video finished successfully (${Math.round(result.duration)}s)`);
+    if ((result as any).completed) {
+      logger.info(`[VIDEO] Video finished successfully (${Math.round((result as any).duration)}s)`);
     } else {
-      const watchedMins = Math.round((result.watched || 0) / 60);
-      logger.warn(`[VIDEO] Video wait timeout. Watched: ${watchedMins}m / ${Math.round((result.duration || 0) / 60)}m`);
+      const watchedMins = Math.round(((result as any).watched || 0) / 60);
+      logger.warn(`[VIDEO] Video wait timeout. Watched: ${watchedMins}m / ${Math.round(((result as any).duration || 0) / 60)}m`);
     }
 
     return {
       success: true,
-      data: result,
+      data: result as any,
       duration: Date.now() - startTime,
     };
   } catch (error) {

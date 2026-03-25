@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const BrowserConfigSchema = z.object({
   headless: z.boolean().default(false),
   timeout: z.number().default(30000),
-  navigationTimeout: z.number().default(60000),
+  navigationTimeout: z.number().default(15000),
   slowMo: z.number().default(0),
   viewport: z.object({
     width: z.number().default(1280),

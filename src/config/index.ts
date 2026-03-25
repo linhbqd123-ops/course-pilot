@@ -77,21 +77,24 @@ function parseEnvConfig(): Record<string, any> {
 
   // Handle specific provider keys
   if (process.env.GROQ_API_KEY) {
-    if (!config.providers) config.providers = {};
-    if (!config.providers.groq) config.providers.groq = {};
-    config.providers.groq.apiKey = process.env.GROQ_API_KEY;
+    if (!config.llm) config.llm = {} as any;
+    if (!config.llm.providers) config.llm.providers = {} as any;
+    if (!config.llm.providers.groq) config.llm.providers.groq = {} as any;
+    config.llm.providers.groq.apiKey = process.env.GROQ_API_KEY;
   }
 
   if (process.env.OPENAI_API_KEY) {
-    if (!config.providers) config.providers = {};
-    if (!config.providers.openai) config.providers.openai = {};
-    config.providers.openai.apiKey = process.env.OPENAI_API_KEY;
+    if (!config.llm) config.llm = {} as any;
+    if (!config.llm.providers) config.llm.providers = {} as any;
+    if (!config.llm.providers.openai) config.llm.providers.openai = {} as any;
+    config.llm.providers.openai.apiKey = process.env.OPENAI_API_KEY;
   }
 
   if (process.env.OLLAMA_BASE_URL) {
-    if (!config.providers) config.providers = {};
-    if (!config.providers.ollama) config.providers.ollama = {};
-    config.providers.ollama.baseUrl = process.env.OLLAMA_BASE_URL;
+    if (!config.llm) config.llm = {} as any;
+    if (!config.llm.providers) config.llm.providers = {} as any;
+    if (!config.llm.providers.ollama) config.llm.providers.ollama = {} as any;
+    config.llm.providers.ollama.baseUrl = process.env.OLLAMA_BASE_URL;
   }
 
   return config;

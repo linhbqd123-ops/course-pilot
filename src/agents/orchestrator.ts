@@ -100,106 +100,169 @@ export class OrchestratorAgent extends BaseAgent {
       // ===== PHASE 3: Initialize Course Progress =====
       logger.info('[ORCHESTRATOR] Phase 3/5: Initializing course progress...');
       const progressRepo = new CourseProgressRepository();
+      const sectionRepo = new CourseSectionRepository();
       let courseProgress = progressRepo.findByUrl(courseUrl);
 
+      // Extract sections from page (fallback)
+      const pageExtractedSections = await this.extractSectionNamesSimple(page);
+
       if (!courseProgress) {
+        // [PLAN] New course: create progress + sections
         logger.info('Creating new course progress entry...');
-        // Extract sections from page (simple heuristic)
-        const sections = await this.extractSectionNamesSimple(page);
-        courseProgress = progressRepo.create(courseName, courseUrl, sections.length);
+        const sectionCount = pageExtractedSections.length || 1;
+        courseProgress = progressRepo.create(courseName, courseUrl, sectionCount);
 
         // Create section entries
-        const sectionRepo = new CourseSectionRepository();
-        for (let i = 0; i < sections.length; i++) {
+        for (let i = 0; i < pageExtractedSections.length; i++) {
           sectionRepo.create(
             courseProgress.id,
             i + 1,
-            sections[i],
-            courseUrl, // Will navigate to section if needed
+            pageExtractedSections[i],
+            courseUrl,
             'unknown'
           );
         }
         logger.info(`Created course progress: ${courseProgress.total_sections} sections`);
       } else {
+        // [PLAN] Resume course: validate DB sections against detected sections
         logger.info(`Resumed course: ${courseProgress.status} (${courseProgress.current_section}/${courseProgress.total_sections})`);
-      }
-
-      // ===== PHASE 4: Identify Next Section =====
-      logger.info('[ORCHESTRATOR] Phase 4/5: Finding next pending section...');
-      const sectionRepo = new CourseSectionRepository();
-      const nextSection = sectionRepo.getNextPending(courseProgress.id);
-
-      if (!nextSection) {
-        logger.info('All sections completed!');
-        progressRepo.markCompleted(courseProgress.id);
-        return {
-          success: true,
-          taskId,
-          action: 'course_completed',
-          message: `Course completed! ${courseName}`,
-          durationMs: Date.now() - startTime,
-        };
-      }
-
-      // ===== PHASE 5: Generate & Execute Section Workflow =====
-      logger.info(`[ORCHESTRATOR] Phase 5/5: Processing section ${nextSection.section_number}/${courseProgress.total_sections}: "${nextSection.section_name}"`);
-      sectionRepo.startSection(nextSection.id);
-      progressRepo.updateCurrentSection(courseProgress.id, nextSection.section_number);
-
-      let workflowResult: any;
-      if (coursePattern && llmProvider) {
-        const executor = new SectionWorkflowExecutor(llmProvider);
-        try {
-          workflowResult = await executor.generateSectionWorkflow(
-            page,
-            nextSection.section_name,
-            nextSection.section_number,
-            coursePattern
-          );
-
-          logger.info(`[ORCHESTRATOR] Section workflow generated:`);
-          logger.info(`  - Steps: ${workflowResult.workflowSteps.length}`);
-          logger.info(`  - Completion: ${workflowResult.completionState}`);
-          logger.info(`  - User message: ${workflowResult.userMessage}`);
-
-          // Store workflow + state in section data
-          const sectionData = {
-            workflow: workflowResult,
-            userMessage: workflowResult.userMessage,
-            completionState: workflowResult.completionState,
-            completionAttemptTime: Math.floor(Date.now() / 1000),
-          };
-          sectionRepo.findById(nextSection.id);
-          // Would need method to update section data
-          // sectionRepo.updateSectionData(nextSection.id, sectionData);
-        } catch (err) {
-          logger.error({ err }, '[ORCHESTRATOR] Workflow generation failed');
-          sectionRepo.failSection(nextSection.id, `Workflow generation failed: ${err instanceof Error ? err.message : 'unknown'}`);
-          throw err;
+        
+        // [ANALYZE] Check if course structure changed (new analyzer + existing DB)
+        const dbSections = sectionRepo.findByCourseId(courseProgress.id);
+        
+        // Determine authoritative section list (use extracted names)
+        let authoritiveSections = pageExtractedSections;
+        let aiDetectedCount = authoritiveSections.length;
+        
+        if (coursePattern?.courseStructure?.totalSections) {
+          // AI analysis provides reliable count - might differ from page extraction
+          aiDetectedCount = coursePattern.courseStructure.totalSections;
+          logger.info(`[ANALYZE] AI detected ${aiDetectedCount} sections, page extracted ${authoritiveSections.length}`);
+          
+          // If AI count differs from extraction, pad extracted with generic names or use AI count
+          if (aiDetectedCount > authoritiveSections.length) {
+            logger.warn(`[ANALYZE] AI count (${aiDetectedCount}) > extracted (${authoritiveSections.length}), padding...`);
+            for (let i = authoritiveSections.length; i < aiDetectedCount; i++) {
+              authoritiveSections.push(`Section ${i + 1}`);
+            }
+          }
         }
-      } else {
-        logger.info('[ORCHESTRATOR] No AI pattern available, returning basic workflow');
-        workflowResult = {
-          sectionName: nextSection.section_name,
-          completionState: 'needs_verification',
-          userMessage: `Navigate to section: "${nextSection.section_name}" and complete it.`,
-        };
+
+        // [VERIFY] If section count mismatch, refresh DB
+        if (dbSections.length !== authoritiveSections.length && authoritiveSections.length > 0) {
+          logger.warn(`[VERIFY] Section count mismatch: DB=${dbSections.length}, detected=${authoritiveSections.length}. Refreshing...`);
+          
+          // Delete old sections (if not all completed)
+          const nonCompletedCount = dbSections.filter(s => s.status !== 'completed').length;
+          if (nonCompletedCount > 0) {
+            logger.info(`Deleting ${dbSections.length} old sections to recreate...`);
+            // Use transaction to atomically delete all and recreate
+            const db = require('../db/index.js').getDatabase().getDatabase();
+            try {
+              const deleteStmt = db.prepare('DELETE FROM course_sections WHERE course_id = ?');
+              deleteStmt.run(courseProgress.id);
+              logger.info(`Deleted all ${dbSections.length} sections for course`);
+            } catch (e) {
+              logger.error({ err: e }, `Failed to delete sections for course ${courseProgress.id}`);
+              throw e;
+            }
+          }
+
+          // Recreate sections from authoritative list
+          for (let i = 0; i < authoritiveSections.length; i++) {
+            sectionRepo.create(
+              courseProgress.id,
+              i + 1,
+              authoritiveSections[i],
+              courseUrl,
+              'unknown'
+            );
+          }
+
+          // Update course progress with new section count
+          const db = require('../db/index.js').getDatabase().getDatabase();
+          db.prepare(
+            `UPDATE course_progress SET total_sections = ?, status = ?, current_section = ? WHERE id = ?`
+          ).run(authoritiveSections.length, 'in_progress', 0, courseProgress.id);
+
+          courseProgress.total_sections = authoritiveSections.length;
+          logger.info(`Refreshed: ${authoritiveSections.length} sections recreated, status reset to in_progress`);
+        }
       }
 
+      // ===== PHASE 4 & 5: Process Sections (Agentic Loop) =====
+      logger.info('[ORCHESTRATOR] Phase 4/5: Processing pending sections...');
+      
+      let sectionsProcessed = 0;
+      let lastError: Error | null = null;
+
+      // Agentic loop: analyze → plan → execute → verify → repeat
+      while (true) {
+        // [ANALYZE] Find next pending section
+        const nextSection = sectionRepo.getNextPending(courseProgress.id);
+        
+        if (!nextSection) {
+          // [VERIFY] All sections complete
+          logger.info('[ORCHESTRATOR] All sections completed!');
+          progressRepo.markCompleted(courseProgress.id);
+          break;
+        }
+
+        // [PLAN] Log what we're about to do
+        logger.info(`[ORCHESTRATOR] Processing section ${nextSection.section_number}/${courseProgress.total_sections}: "${nextSection.section_name}"`);
+        sectionRepo.startSection(nextSection.id);
+        progressRepo.updateCurrentSection(courseProgress.id, nextSection.section_number);
+
+        // [EXECUTE] Generate and execute workflow
+        try {
+          if (coursePattern && llmProvider) {
+            const executor = new SectionWorkflowExecutor(llmProvider);
+            const workflowResult = await executor.generateSectionWorkflow(
+              page,
+              nextSection.section_name,
+              nextSection.section_number,
+              coursePattern
+            );
+
+            logger.info(`[ORCHESTRATOR] Section workflow:`);
+            logger.info(`  - Steps: ${workflowResult.workflowSteps?.length || 0}`);
+            logger.info(`  - Completion: ${workflowResult.completionState}`);
+            logger.info(`  ​- Message: ${workflowResult.userMessage}`);
+
+          } else {
+            logger.info('[ORCHESTRATOR] No AI pattern, using basic workflow');
+            const userMsg = `Navigate to section: "${nextSection.section_name}" and complete it.`;
+            logger.info(`  - Message: ${userMsg}`);
+          }
+
+          // [VERIFY] Mark section complete
+          sectionRepo.completeSection(nextSection.id);
+          sectionsProcessed++;
+          logger.info(`[ORCHESTRATOR] Section ${nextSection.section_number} marked complete`);
+
+        } catch (err) {
+          // [HANDLE ERROR] Log and store for later
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logger.error({ err }, `[ORCHESTRATOR] Section ${nextSection.section_number} failed: ${errorMsg}`);
+          sectionRepo.failSection(nextSection.id, errorMsg);
+          lastError = err as Error;
+          
+          // Continue to next section (or break if critical error)
+          if (errorMsg.includes('API') || errorMsg.includes('auth')) {
+            logger.error('[ORCHESTRATOR] Critical error, stopping loop');
+            throw err;
+          }
+        }
+      }
+
+      // Return result after processing all sections (or until error)
       return {
-        success: true,
+        success: !lastError,
         taskId,
-        action: 'section_workflow_generated',
-        message: `Workflow ready for section: ${nextSection.section_name}`,
-        data: {
-          courseId: courseProgress.id,
-          sectionId: nextSection.id,
-          sectionName: nextSection.section_name,
-          progress: `${nextSection.section_number}/${courseProgress.total_sections}`,
-          workflow: workflowResult,
-          userMessage: workflowResult.userMessage,
-          completionState: workflowResult.completionState,
-        },
+        action: 'course_completed',
+        message: `Course completed! Processed ${sectionsProcessed} sections.${courseName}`,
+        data: { sectionsProcessed, courseId: courseProgress.id },
+        error: lastError?.message,
         durationMs: Date.now() - startTime,
       };
     } catch (error) {
@@ -249,17 +312,8 @@ export class OrchestratorAgent extends BaseAgent {
     // Only use URL-based detection to avoid false positives from embedded/hidden forms
     const authPaths = ['/login', '/auth', '/signin', '/sign-in', '/log-in'];
     try {
-      const urlObj = new URL(url);
-      const path = (urlObj.pathname || '').toLowerCase();
-      const hash = (urlObj.hash || '').toLowerCase();
-
-      if (authPaths.some(p => path.includes(p))) {
+      if (authPaths.some(p => url.includes(p))) {
         logger.info('[ORCHESTRATOR] Auth detection: URL path indicates login page');
-        return true;
-      }
-
-      if (authPaths.some(p => hash.includes(p))) {
-        logger.info('[ORCHESTRATOR] Auth detection: URL hash indicates login page');
         return true;
       }
     } catch (err) {

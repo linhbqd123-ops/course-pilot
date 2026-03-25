@@ -75,7 +75,7 @@ export class BrowserController {
     try {
       logger.info(`Initializing browser with profile: ${this.profilePath}`);
 
-      this.browser = await chromium.launchPersistentContext(this.profilePath, {
+      this.context = await chromium.launchPersistentContext(this.profilePath, {
         headless: this.config.headless,
         args: [
           '--disable-blink-features=AutomationControlled',
@@ -88,13 +88,12 @@ export class BrowserController {
       } as any);
 
       // Get or create page
-      if (this.browser.pages && this.browser.pages().length > 0) {
-        this.page = this.browser.pages()[0];
+      const pages = this.context.pages();
+      if (pages && pages.length > 0) {
+        this.page = pages[0];
       } else {
-        this.page = await this.browser.newPage();
+        this.page = await this.context.newPage();
       }
-
-      this.context = this.browser as unknown as BrowserContext;
 
       logger.info('Browser initialized successfully');
     } catch (error) {
