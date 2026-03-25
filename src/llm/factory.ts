@@ -15,8 +15,10 @@ export class LLMFactory {
   }
 
   private initializeProviders(): void {
-    // Initialize all configured providers
-    for (const [name, providerConfig] of Object.entries(this.config.providers || {})) {
+    // Initialize all configured providers from `llm` section
+    const llmConfig = this.config.llm || { providers: {} };
+    const providers = llmConfig.providers as Record<string, import('./types.js').LLMProviderConfig>;
+    for (const [name, providerConfig] of Object.entries(providers || {})) {
       try {
         const provider = new UnifiedLLMProvider(providerConfig);
         this.providers.set(name, provider);
@@ -32,7 +34,7 @@ export class LLMFactory {
    */
   getProviderForTask(taskType: AgentTaskType): LLMProvider {
     // Check task mapping first
-    const mappedProvider = this.config.taskMapping?.[taskType];
+    const mappedProvider = this.config.llm?.taskMapping?.[taskType];
 
     if (mappedProvider) {
       const provider = this.providers.get(mappedProvider);
@@ -43,7 +45,7 @@ export class LLMFactory {
     }
 
     // Fall back to default provider
-    const defaultProvider = this.config.defaultProvider || 'groq';
+    const defaultProvider = this.config.llm?.defaultProvider || 'groq';
     let provider = this.providers.get(defaultProvider);
 
     if (!provider) {

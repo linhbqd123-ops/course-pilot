@@ -6,10 +6,18 @@ let logger: pino.Logger | null = null;
 export function initLogger(level: string = 'info'): pino.Logger {
   logger = pino({
     level,
+    transport: {
+      target: 'pino/file',
+      options: {
+        destination: 1,
+        colorize: true,
+      }
+    },
     formatters: {
       level: (label) => {
         return { level: label };
       },
+      bindings: () => ({})
     },
   });
   return logger;
@@ -23,22 +31,22 @@ export function getLogger(): pino.Logger {
 }
 
 export function logSuccess(msg: string): void {
-  console.log(chalk.green('✓') + ' ' + msg);
+  console.log(chalk.green('✓ ') + msg);
 }
 
 export function logError(msg: string): void {
-  console.log(chalk.red('✗') + ' ' + msg);
+  console.log(chalk.red('✗ ') + msg);
 }
 
 export function logWarning(msg: string): void {
-  console.log(chalk.yellow('⚠') + ' ' + msg);
+  console.log(chalk.yellow('⚠ ') + msg);
 }
 
 export function logInfo(msg: string): void {
-  console.log(chalk.blue('ℹ') + ' ' + msg);
+  console.log(chalk.blue('ℹ ') + msg);
 }
 
 export function logProgress(msg: string, progress?: number): void {
   const percentage = progress !== undefined ? ` (${Math.round(progress * 100)}%)` : '';
-  console.log(chalk.cyan('⏳') + ' ' + msg + percentage);
+  console.log(chalk.cyan('⏳ ') + msg + percentage);
 }

@@ -5,6 +5,20 @@ import { getLogger } from '../utils/logger.js';
 
 const logger = getLogger();
 
+const DEFAULT_LOADER_SELECTORS = [
+  '[aria-busy="true"]',
+  'div[role="progressbar"]',
+  '.loading',
+  '.loader',
+  '.spinner',
+  '.loading-spinner',
+  '.lds-ellipsis',
+  '.spinner-icon',
+  '.sk-spinner',
+  '.v-loading',
+  '.gl-spinner',
+];
+
 export class BrowserController {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -15,6 +29,43 @@ export class BrowserController {
   constructor(profilePath: string, config: BrowserConfig) {
     this.profilePath = profilePath;
     this.config = config;
+  }
+
+  /**
+   * Wait for common loader/spinner elements to disappear.
+   * This helps detect visual readiness on SPA sites that never reach "networkidle".
+   */
+  private async waitForLoaderGone(timeoutMs: number = 10000): Promise<void> {
+    const page = this.getActivePage();
+    const perSelectorTimeout = Math.max(1000, Math.min(timeoutMs, 10000));
+
+    for (const selector of DEFAULT_LOADER_SELECTORS) {
+      try {
+        // Quick existence check
+        const handle = await page.$(selector);
+        if (!handle) continue;
+
+        logger.info(`[BROWSER] Detected loader selector present: ${selector} — waiting up to ${perSelectorTimeout}ms for it to disappear`);
+        await page.waitForSelector(selector, { state: 'hidden', timeout: perSelectorTimeout });
+        logger.info(`[BROWSER] Loader ${selector} disappeared`);
+        return;
+      } catch (err) {
+        // If waiting for this selector timed out, continue to next selector
+        logger.debug({ err }, `[BROWSER] Loader ${selector} did not disappear within ${perSelectorTimeout}ms`);
+        continue;
+      }
+    }
+
+    // As a last resort, look for elements with inline spinner attributes
+    try {
+      // If nothing matched or disappeared, check for global busy markers briefly
+      const busy = await page.$('[data-loading="true"]');
+      if (busy) {
+        await page.waitForSelector('[data-loading="true"]', { state: 'hidden', timeout: perSelectorTimeout });
+      }
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -86,19 +137,55 @@ export class BrowserController {
   }
 
   /**
-   * Navigate to URL
+   * Navigate to URL with retry fallback
    */
   async navigateTo(url: string, waitUntil: 'load' | 'domcontentloaded' | 'networkidle' = 'networkidle'): Promise<string> {
     const page = this.getActivePage();
+    const startTime = Date.now();
 
     try {
+      logger.info(`[BROWSER] Navigating to: ${url}`);
+      logger.info(`[BROWSER] Waiting for page load state: ${waitUntil} (timeout: ${this.config.navigationTimeout}ms)`);
+
       await page.goto(url, {
         waitUntil,
         timeout: this.config.navigationTimeout,
       });
 
-      return page.url();
+      const finalUrl = page.url();
+      logger.info(`[BROWSER] Navigation successful (${Date.now() - startTime}ms). URL: ${finalUrl}`);
+      // After navigation, wait for any common loading/spinner indicators to disappear
+      await this.waitForLoaderGone().catch((err) => {
+        logger.info('[BROWSER] Loader wait skipped or timed out: ' + (err instanceof Error ? err.message : String(err)));
+      });
+      return finalUrl;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[BROWSER] Navigation timeout on "${waitUntil}" strategy: ${errorMsg}`);
+
+      // Retry with more lenient strategy
+      if (waitUntil === 'networkidle') {
+        logger.info(`[BROWSER] Retrying navigation with "load" strategy...`);
+        try {
+          await page.goto(url, {
+            waitUntil: 'load',
+            timeout: this.config.navigationTimeout,
+          });
+
+          const finalUrl = page.url();
+          logger.info(`[BROWSER] Navigation successful with fallback (${Date.now() - startTime}ms). URL: ${finalUrl}`);
+          // Wait for loader to disappear after fallback navigation
+          await this.waitForLoaderGone().catch((err) => {
+            logger.info('[BROWSER] Loader wait skipped or timed out (fallback): ' + (err instanceof Error ? err.message : String(err)));
+          });
+          return finalUrl;
+        } catch (retryError) {
+          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+          logger.error(`[BROWSER] Navigation failed on both strategies: ${retryMsg}`);
+          throw retryError;
+        }
+      }
+
       logger.error({ error }, `Navigation to ${url} failed`);
       throw error;
     }

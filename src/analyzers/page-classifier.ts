@@ -169,40 +169,96 @@ export async function extractCourseStructure(
   }
 }
 
+export interface CompletionSignals {
+  hasCompletionText: boolean; // Regex: "completed|finished|done|success|passed|congratulations"
+  completionTextSnippet?: string;
+  progressPercent?: number; // From aria-valuenow or width %
+  hasNextButton: boolean; // Button exists to go to next section
+  nextButtonEnabled: boolean;
+  hasMarkCompleteButton: boolean; // Explicit "Mark Complete" / "Finish" button
+  markCompleteButtonEnabled: boolean;
+  hasVideoElement: boolean;
+  videoCompleted?: boolean; // True if video duration == current time or 100% watched
+  hasQuizForm: boolean;
+  quizSubmitted?: boolean; // True if quiz success message shown
+  estimatedCompletion: number; // 0-1 weighted score based on signals
+}
+
 /**
- * Detect if current section is completed
+ * Collect completion signals (transparent facts, no interpretation).
+ * Facts only - no AI needed. AI decides if these signals = "done".
  */
-export async function detectCompletion(page: Page): Promise<boolean> {
+export async function collectCompletionSignals(page: Page): Promise<CompletionSignals> {
   try {
-    const isCompleted = await page.evaluate(() => {
-      const patterns = [
-        /completed?|finished?|done|success|passed|congratulations/i,
-        /next.*section|continue|go.*to.*next/i,
-      ];
-
+    const signals = await page.evaluate(() => {
       const bodyText = document.body.innerText || '';
-      const htmlText = document.body.innerHTML || '';
 
-      for (const pattern of patterns) {
-        if (pattern.test(bodyText)) {
-          return true;
-        }
+      // Transparent checks only
+      const completionPattern = /completed?|finished?|done|success|passed|congratulations/i;
+      const hasCompletionText = completionPattern.test(bodyText);
+      const completionMatch = bodyText.match(completionPattern);
+      const completionTextSnippet = completionMatch ? completionMatch[0] : undefined;
+
+      // Progress bar - transparent parse
+      let progressPercent: number | undefined;
+      const progressEl = document.querySelector('[role="progressbar"]');
+      if (progressEl && progressEl.hasAttribute('aria-valuenow')) {
+        const val = parseFloat(progressEl.getAttribute('aria-valuenow') || '0');
+        progressPercent = Math.min(100, val);
       }
 
-      // Check for disabled next button (indicates completion)
-      const nextButtons = document.querySelectorAll('[aria-label*="next"], [class*="next-button"], button[aria-label*="mark complete"]');
-      for (const btn of nextButtons) {
-        if ((btn as HTMLButtonElement).disabled) {
-          return true;
-        }
-      }
+      // Buttons - just existence + state, no interpretation
+      const nextButton = document.querySelector('[aria-label*="next"], [class*="next-button"]');
+      const markButton = document.querySelector('button[aria-label*="mark complete"], button[aria-label*="finish"], button[aria-label*="complete"]');
 
-      return false;
+      // Video check
+      const hasVideoElement = !!document.querySelector('video, iframe[src*="youtube.com"], iframe[src*="vimeo.com"]');
+
+      // Quiz check
+      const hasQuizForm = !!document.querySelector('form, .quiz, [class*="quiz"], [data-question]');
+      const quizSuccessPattern = /successful|submitted|graded|passed/i;
+      const quizSubmitted = quizSuccessPattern.test(bodyText);
+
+      return {
+        hasCompletionText,
+        completionTextSnippet,
+        progressPercent,
+        hasNextButton: !!nextButton,
+        nextButtonEnabled: nextButton ? !(nextButton as HTMLButtonElement).disabled : false,
+        hasMarkCompleteButton: !!markButton,
+        markCompleteButtonEnabled: markButton ? !(markButton as HTMLButtonElement).disabled : false,
+        hasVideoElement,
+        hasQuizForm,
+        quizSubmitted,
+      };
     });
 
-    return isCompleted;
+    // Calculate weighted score (transparent heuristic, but interpretation is AI's job)
+    let score = 0;
+    if (signals.hasCompletionText) score += 0.4;
+    if (signals.progressPercent === 100) score += 0.3;
+    if (signals.hasMarkCompleteButton && !signals.markCompleteButtonEnabled) score += 0.1; // Lowered: disabled button is weak signal
+    if (signals.quizSubmitted) score += 0.2;
+
+    logger.info(`[CLASSIFIER] Completion signals collected: text=${signals.hasCompletionText}, progress=${signals.progressPercent}%, quizSubmitted=${signals.quizSubmitted}, score=${(score).toFixed(2)}`);
+
+    return {
+      ...signals,
+      estimatedCompletion: Math.min(1, score),
+    };
   } catch (error) {
-    logger.error({ error }, 'Error detecting completion');
-    return false;
+    logger.error({ error }, 'Error collecting completion signals');
+    return {
+      hasCompletionText: false,
+      progressPercent: 0,
+      hasNextButton: false,
+      nextButtonEnabled: false,
+      hasMarkCompleteButton: false,
+      markCompleteButtonEnabled: false,
+      hasVideoElement: false,
+      hasQuizForm: false,
+      quizSubmitted: false,
+      estimatedCompletion: 0,
+    };
   }
 }

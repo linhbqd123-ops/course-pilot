@@ -64,6 +64,7 @@ export abstract class BaseAgent {
    * Call LLM to generate response
    */
   protected async think(userMessage: string, options?: { temperature?: number; maxTokens?: number }): Promise<string> {
+    const taskType = this.getTaskType();
     const messages: LLMMessage[] = [
       {
         role: 'system',
@@ -76,10 +77,13 @@ export abstract class BaseAgent {
     ];
 
     try {
+      logger.info(`[${taskType.toUpperCase()}] Calling LLM for analysis...`);
+      const startTime = Date.now();
       const response = await this.llmProvider.chat(messages, options);
+      logger.info(`[${taskType.toUpperCase()}] LLM response received (${Date.now() - startTime}ms)`);
       return response.content;
     } catch (error) {
-      logger.error({ error }, 'LLM chat error');
+      logger.error({ error }, `[${taskType.toUpperCase()}] LLM chat error`);
       throw error;
     }
   }
@@ -88,6 +92,7 @@ export abstract class BaseAgent {
    * Call LLM with JSON response
    */
   protected async thinkJSON<T = any>(userMessage: string): Promise<T> {
+    const taskType = this.getTaskType();
     const messages: LLMMessage[] = [
       {
         role: 'system',
@@ -100,10 +105,13 @@ export abstract class BaseAgent {
     ];
 
     try {
+      logger.info(`[${taskType.toUpperCase()}] Calling LLM for JSON analysis...`);
+      const startTime = Date.now();
       const response = await this.llmProvider.chat(messages, { jsonMode: true });
+      logger.info(`[${taskType.toUpperCase()}] LLM JSON response received (${Date.now() - startTime}ms)`);
       return JSON.parse(response.content);
     } catch (error) {
-      logger.error({ error }, 'LLM JSON chat error');
+      logger.error({ error }, `[${taskType.toUpperCase()}] LLM JSON chat error`);
       throw error;
     }
   }
@@ -136,9 +144,20 @@ ${text}
   }
 
   /**
-   * Log action
+   * Log action - visible progress updates for user
    */
   protected logAction(action: string, details?: string): void {
-    logger.debug(`[${this.getTaskType()}] ${action}${details ? ': ' + details : ''}`);
+    const taskType = this.getTaskType();
+    const message = `[${taskType.toUpperCase()}] ${action}${details ? ': ' + details : ''}`;
+    logger.info(message);
+  }
+
+  /**
+   * Log error with context
+   */
+  protected logError(action: string, error: unknown): void {
+    const taskType = this.getTaskType();
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error(`[${taskType.toUpperCase()}] ${action} failed: ${errorMsg}`);
   }
 }

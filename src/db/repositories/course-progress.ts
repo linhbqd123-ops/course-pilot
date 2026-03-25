@@ -26,9 +26,11 @@ export class CourseProgressRepository {
       course_url: courseUrl,
       course_name: courseName,
       started_at: now,
+      completed_at: undefined,
       current_section: 0,
       total_sections: totalSections,
       status: 'in_progress',
+      metadata: '{}', // JSON
       updated_at: now,
     };
   }
@@ -140,7 +142,7 @@ export class CourseProgressRepository {
       if (current?.metadata) {
         metadata = JSON.parse(current.metadata);
       }
-    } catch {}
+    } catch { }
 
     metadata = { ...metadata, failureReason: reason };
 

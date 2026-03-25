@@ -46,26 +46,33 @@ export function getConfig(): Config {
 
 function parseEnvConfig(): Record<string, any> {
   const config: any = {};
+  // By default we DO NOT map AGENT_* environment variables into config.
+  // Best practice: use YAML (`config/default.yaml`) for structural config and
+  // environment variables only for secrets (API keys) or when explicitly
+  // allowed. To enable AGENT_* style overrides set `AGENT_ALLOW_OVERRIDES=true`.
+  const allowOverrides = process.env.AGENT_ALLOW_OVERRIDES === 'true';
 
-  // Parse AGENT_SECTION_KEY format
-  for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith('AGENT_')) continue;
+  if (allowOverrides) {
+    // Parse AGENT_SECTION_KEY format
+    for (const [key, value] of Object.entries(process.env)) {
+      if (!key.startsWith('AGENT_')) continue;
 
-    const parts = key.slice(6).toLowerCase().split('_');
-    if (parts.length < 2) continue;
+      const parts = key.slice(6).toLowerCase().split('_');
+      if (parts.length < 2) continue;
 
-    const [section, ...keyParts] = parts;
-    const configKey = keyParts.join('_');
+      const [section, ...keyParts] = parts;
+      const configKey = keyParts.join('_');
 
-    if (!config[section]) config[section] = {};
+      if (!config[section]) config[section] = {};
 
-    // Try to parse as number/boolean
-    let parsedValue: any = value;
-    if (value === 'true') parsedValue = true;
-    else if (value === 'false') parsedValue = false;
-    else if (!isNaN(Number(value))) parsedValue = Number(value);
+      // Try to parse as number/boolean
+      let parsedValue: any = value;
+      if (value === 'true') parsedValue = true;
+      else if (value === 'false') parsedValue = false;
+      else if (!isNaN(Number(value))) parsedValue = Number(value);
 
-    config[section][configKey] = parsedValue;
+      config[section][configKey] = parsedValue;
+    }
   }
 
   // Handle specific provider keys

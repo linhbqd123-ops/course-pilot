@@ -21,8 +21,12 @@ npx playwright install chromium
 # Start with auto-reload (TypeScript watch + auto-restart)
 npm run dev
 
-# Run a single command in dev mode (uses ts-node / dev runner)
+# Run a single command in dev mode (uses tsx / dev runner)
 npm run dev -- complete "Course Name" "https://example.com/course" --debug
+
+# Watch mode for development (restarts on file changes)
+# Note: CLI commands exit quickly, so watch mode shows "Failed" for normal operation
+npm run dev:watch
 ```
 
 ## Test / Quick Sanity
@@ -69,11 +73,19 @@ NOTE: `pkg` was attempted historically but produced import.meta and bytecode war
 
 Use `.env` at project root or set in the shell. Key entries:
 
-- `GROQ_API_KEY` — Groq API key
-- `OPENAI_API_KEY` — OpenAI API key
-- `OLLAMA_BASE_URL` — Ollama server base URL (e.g., `http://localhost:11434`)
-- `AGENT_BROWSER_HEADLESS` — `true|false`
+- `GROQ_API_KEY` — Groq API key (secret)
+- `OPENAI_API_KEY` — OpenAI API key (secret)
+- `OLLAMA_BASE_URL` — Ollama server base URL (e.g., `http://localhost:11434`) (secret/host)
 - `AGENT_LOGGING_LEVEL` — `debug|info|warn|error`
+
+Best practice: keep structural configuration (timeouts, viewport, feature flags)
+in `config/default.yaml` and use environment variables only for secrets or small
+opt-in overrides. Automatic mapping of `AGENT_*` env variables into the config is
+disabled by default to avoid accidental overrides. If you need the legacy
+behaviour, enable it explicitly with `AGENT_ALLOW_OVERRIDES=true` (not
+recommended for production).
+
+**Note**: The application requires at least one LLM provider to be configured. Set `GROQ_API_KEY` or `OPENAI_API_KEY` in your environment or `.env` file.
 
 ## Inspecting Data
 

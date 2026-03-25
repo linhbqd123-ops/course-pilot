@@ -15,12 +15,18 @@
     "build:all": "npm run build && npm run build:bundle",
     "build:release": "npm run build:all && echo 'Ready for distribution: browser-agent-tool.zip'",
     "start": "node main.js",
-    "dev": "ts-node src/index.ts",
-    "dev:watch": "ts-node --watch src/index.ts",
+    "dev": "node --import tsx/esm src/index.ts",
+    "dev:watch": "node --loader tsx/esm --watch src/index.ts",
     "test": "vitest",
     "test:setup": "node test-setup.js"
   },
-  "keywords": ["ai", "browser", "automation", "playwright", "course"],
+  "keywords": [
+    "ai",
+    "browser",
+    "automation",
+    "playwright",
+    "course"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -43,6 +49,7 @@
     "@vercel/ncc": "^0.38.1",
     "pkg": "^5.8.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.3",
     "vitest": "^1.1.0"
   },

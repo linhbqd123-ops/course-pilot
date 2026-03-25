@@ -1,10 +1,14 @@
 import { Page } from 'playwright';
 import { PageStateInfo, CheckElementToolInput, WaitForStateToolInput, ToolOutput } from './types.js';
+import { getLogger } from '../utils/logger.js';
+
+const logger = getLogger();
 
 export async function detectPageState(
   page: Page
 ): Promise<ToolOutput<{ state: PageStateInfo }>> {
   const startTime = Date.now();
+  logger.info(`[DETECTION] Analyzing page state...`);
 
   try {
     const state = await page.evaluate(() => {
@@ -98,15 +102,19 @@ export async function detectPageState(
       };
     });
 
+    logger.info(`[DETECTION] Page type detected: ${state.estimatedPageType}. Indicators: ${state.indicators.join(', ')}`);
+
     return {
       success: true,
       data: { state },
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Detect page state failed';
+    logger.error(`[DETECTION] Page state detection failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Detect page state failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: {
         state: {
@@ -127,6 +135,7 @@ export async function checkElement(
   input: CheckElementToolInput
 ): Promise<ToolOutput<{ exists: boolean; visible: boolean; enabled: boolean }>> {
   const startTime = Date.now();
+  logger.info(`[DETECTION] Checking element: ${input.selector}${input.state ? ` (state: ${input.state})` : ''}`);
 
   try {
     const { selector, state } = input;
@@ -135,6 +144,7 @@ export async function checkElement(
     let exists = await locator.count().then((count) => count > 0);
 
     if (!exists) {
+      logger.warn(`[DETECTION] Element not found: ${selector}`);
       return {
         success: true,
         data: { exists: false, visible: false, enabled: false },
@@ -157,8 +167,11 @@ export async function checkElement(
       enabled = false;
     }
 
+    logger.info(`[DETECTION] Element found - Visible: ${visible}, Enabled: ${enabled}`);
+
     // If specific state requested
     if (state === 'visible' && !visible) {
+      logger.warn(`[DETECTION] Element not visible`);
       return {
         success: false,
         error: 'Element not visible',
@@ -168,6 +181,7 @@ export async function checkElement(
     }
 
     if (state === 'hidden' && visible) {
+      logger.warn(`[DETECTION] Element is visible (expected hidden)`);
       return {
         success: false,
         error: 'Element is visible',
@@ -177,6 +191,7 @@ export async function checkElement(
     }
 
     if (state === 'enabled' && !enabled) {
+      logger.warn(`[DETECTION] Element not enabled`);
       return {
         success: false,
         error: 'Element not enabled',
@@ -186,6 +201,7 @@ export async function checkElement(
     }
 
     if (state === 'disabled' && enabled) {
+      logger.warn(`[DETECTION] Element is enabled (expected disabled)`);
       return {
         success: false,
         error: 'Element is enabled',
@@ -200,9 +216,11 @@ export async function checkElement(
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Check element failed';
+    logger.error(`[DETECTION] Check element failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Check element failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: { exists: false, visible: false, enabled: false },
     };
@@ -215,6 +233,7 @@ export async function waitForElement(
 ): Promise<ToolOutput<{ reached: boolean }>> {
   const startTime = Date.now();
   const maxWait = input.maxWaitTime || 30000;
+  logger.info(`[DETECTION] Waiting for element: ${input.selector} (state: ${input.state}, timeout: ${maxWait}ms)`);
 
   try {
     const { selector, state } = input;
@@ -231,15 +250,18 @@ export async function waitForElement(
       await locator.waitFor({ state: 'visible', timeout: maxWait });
     }
 
+    logger.info(`[DETECTION] Element reached desired state: ${state} (${Date.now() - startTime}ms)`);
     return {
       success: true,
       data: { reached: true },
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : `Element did not reach state: ${input.state}`;
+    logger.warn(`[DETECTION] Wait for element timeout/failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : `Element did not reach state: ${input.state}`,
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: { reached: false },
     };
@@ -250,6 +272,7 @@ export async function detectProgress(
   page: Page
 ): Promise<ToolOutput<{ progress?: number; message?: string }>> {
   const startTime = Date.now();
+  logger.info(`[DETECTION] Detecting progress indicator...`);
 
   try {
     const result = await page.evaluate(() => {
@@ -287,15 +310,23 @@ export async function detectProgress(
       return { message: 'No progress element found' };
     });
 
+    if (result.progress) {
+      logger.info(`[DETECTION] Progress: ${(result.progress * 100).toFixed(1)}%`);
+    } else {
+      logger.info(`[DETECTION] Progress message: ${result.message}`);
+    }
+
     return {
       success: true,
       data: result,
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Detect progress failed';
+    logger.warn(`[DETECTION] Progress detection failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Detect progress failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
     };
   }
@@ -306,9 +337,11 @@ export async function hover(
   selector: string
 ): Promise<ToolOutput<{ hovered: boolean }>> {
   const startTime = Date.now();
+  logger.info(`[DETECTION] Hovering over: ${selector}`);
 
   try {
     await page.locator(selector).hover();
+    logger.info(`[DETECTION] Hover successful (${Date.now() - startTime}ms)`);
 
     return {
       success: true,
@@ -316,9 +349,11 @@ export async function hover(
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Hover failed';
+    logger.error(`[DETECTION] Hover failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Hover failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
     };
   }
@@ -329,9 +364,11 @@ export async function focus(
   selector: string
 ): Promise<ToolOutput<{ focused: boolean }>> {
   const startTime = Date.now();
+  logger.info(`[DETECTION] Focusing element: ${selector}`);
 
   try {
     await page.locator(selector).focus();
+    logger.info(`[DETECTION] Focus successful (${Date.now() - startTime}ms)`);
 
     return {
       success: true,
@@ -339,9 +376,11 @@ export async function focus(
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Focus failed';
+    logger.error(`[DETECTION] Focus failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Focus failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
     };
   }

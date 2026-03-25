@@ -1,6 +1,6 @@
-export { DOMCacheRepository } from './dom-cache.js';
-export { CourseProgressRepository } from './course-progress.js';
-export { CourseSectionRepository } from './course-section.js';
+import { DOMCacheRepository } from './dom-cache.js';
+import { CourseProgressRepository } from './course-progress.js';
+import { CourseSectionRepository } from './course-section.js';
 
 let domCacheRepo: DOMCacheRepository | null = null;
 let courseProgressRepo: CourseProgressRepository | null = null;

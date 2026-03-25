@@ -6,12 +6,16 @@ import {
   FormField,
   ToolOutput,
 } from './types.js';
+import { getLogger } from '../utils/logger.js';
+
+const logger = getLogger();
 
 export async function fillForm(
   page: Page,
   input: FillFormToolInput
 ): Promise<ToolOutput<FormFillResult>> {
   const startTime = Date.now();
+  logger.info(`[FORM] Filling form with ${input.fields.length} fields...`);
 
   try {
     const { fields, submitSelector, waitForNavigation = false } = input;
@@ -21,7 +25,9 @@ export async function fillForm(
     const errors: Record<string, string> = {};
 
     // Fill each field
-    for (const field of fields) {
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      logger.info(`[FORM] Filling field ${i + 1}/${fields.length}: ${field.selector}...`);
       try {
         const locator = page.locator(field.selector);
         await locator.waitFor({ state: 'visible', timeout: 5000 });
@@ -32,6 +38,8 @@ export async function fillForm(
           if (el instanceof HTMLInputElement) return el.type;
           return 'unknown';
         });
+
+        logger.info(`[FORM] Element type: ${elementType}, Value: ${String(field.value).substring(0, 50)}`);
 
         if (elementType === 'select') {
           // Handle select elements
@@ -50,24 +58,35 @@ export async function fillForm(
         }
 
         fieldsFilled++;
+        logger.info(`[FORM] Field ${i + 1} filled successfully`);
       } catch (error) {
         fieldsFailed++;
-        errors[field.selector] = error instanceof Error ? error.message : 'Unknown error';
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        errors[field.selector] = errorMsg;
+        logger.warn(`[FORM] Field ${i + 1} failed: ${errorMsg}`);
       }
     }
 
     // Submit form if selector provided
     if (submitSelector) {
+      logger.info(`[FORM] Submitting form...`);
       try {
         await page.locator(submitSelector).click();
+        logger.info(`[FORM] Form submit button clicked`);
 
         if (waitForNavigation) {
+          logger.info(`[FORM] Waiting for page navigation after submit...`);
           await page.waitForLoadState('networkidle', { timeout: 30000 });
+          logger.info(`[FORM] Navigation complete after submit`);
         }
       } catch (error) {
-        errors['submit'] = error instanceof Error ? error.message : 'Submit failed';
+        const errorMsg = error instanceof Error ? error.message : 'Submit failed';
+        errors['submit'] = errorMsg;
+        logger.error(`[FORM] Form submission failed: ${errorMsg}`);
       }
     }
+
+    logger.info(`[FORM] Form fill complete. Success: ${fieldsFailed === 0}. Filled: ${fieldsFilled}/${fields.length}, Failed: ${fieldsFailed}`);
 
     return {
       success: fieldsFailed === 0,
@@ -80,9 +99,11 @@ export async function fillForm(
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Fill form failed';
+    logger.error(`[FORM] Fill form operation failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Fill form failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: {
         success: false,
@@ -98,6 +119,7 @@ export async function extractFormFields(
   input: ExtractFormToolInput
 ): Promise<ToolOutput<{ fields: FormField[] }>> {
   const startTime = Date.now();
+  logger.info(`[FORM] Extracting form fields...`);
 
   try {
     const { formSelector } = input;
@@ -161,15 +183,22 @@ export async function extractFormFields(
       }
     }, formSelector);
 
+    logger.info(`[FORM] Found ${fields.length} form fields`);
+    fields.forEach((f, i) => {
+      logger.info(`[FORM] Field ${i + 1}: ${f.type} - ${f.name || f.selector}`);
+    });
+
     return {
       success: true,
       data: { fields },
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Extract form fields failed';
+    logger.error(`[FORM] Extract form fields failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Extract form fields failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: { fields: [] },
     };
@@ -180,6 +209,7 @@ export async function extractQuizQuestions(
   page: Page
 ): Promise<ToolOutput<{ questions: any[] }>> {
   const startTime = Date.now();
+  logger.info(`[FORM] Extracting quiz questions...`);
 
   try {
     const questions = await page.evaluate(() => {
@@ -231,15 +261,22 @@ export async function extractQuizQuestions(
       return questions;
     });
 
+    logger.info(`[FORM] Found ${questions.length} quiz questions`);
+    questions.forEach((q) => {
+      logger.info(`[FORM] Question ${q.number}: ${q.text.substring(0, 60)}... (${q.options?.length || 0} options)`);
+    });
+
     return {
       success: true,
       data: { questions },
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Extract quiz questions failed';
+    logger.error(`[FORM] Extract quiz questions failed: ${errorMsg}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Extract quiz questions failed',
+      error: errorMsg,
       duration: Date.now() - startTime,
       data: { questions: [] },
     };

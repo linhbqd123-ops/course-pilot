@@ -1,5 +1,7 @@
 // LLM Provider type definitions
 
+import { LLMProviderConfig as SchemaLLMProviderConfig } from '../config/schema.js';
+
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string | LLMContentPart[];
@@ -21,15 +23,7 @@ export interface LLMResponse {
   finishReason?: string;
 }
 
-export interface LLMProviderConfig {
-  name: string;
-  apiKey?: string;
-  baseUrl?: string;
-  model: string;
-  temperature?: number;
-  maxTokens?: number;
-  rateLimitRPM?: number;
-}
+export type LLMProviderConfig = SchemaLLMProviderConfig;
 
 export interface ChatOptions {
   model?: string;
@@ -43,9 +37,9 @@ export interface LLMProvider {
   readonly config: LLMProviderConfig;
 
   chat(messages: LLMMessage[], options?: ChatOptions): Promise<LLMResponse>;
-  
+
   supportsVision(): boolean;
-  
+
   estimateTokens(text: string): number;
 }
 
